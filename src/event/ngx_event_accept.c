@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 static ngx_int_t ngx_enable_accept_events(ngx_cycle_t *cycle);
@@ -58,8 +61,9 @@ ngx_event_accept(ngx_event_t *ev)
 
     do {
         socklen = NGX_SOCKADDRLEN;
-
-#if (NGX_HAVE_ACCEPT4)
+#ifdef USE_MTCP
+		s = mtcp_accept(mctx,lc->fd, (struct sockaddr *)sa, &socklen);
+#elif (NGX_HAVE_ACCEPT4)
         if (use_accept4) {
             s = accept4(lc->fd, (struct sockaddr *) sa, &socklen,
                         SOCK_NONBLOCK);
@@ -144,7 +148,11 @@ ngx_event_accept(ngx_event_t *ev)
         c = ngx_get_connection(s, ev->log);
 
         if (c == NULL) {
+#ifdef USE_MTCP
+			if (mtcp_close(mctx,s) == -1) {
+#else
             if (ngx_close_socket(s) == -1) {
+#endif
                 ngx_log_error(NGX_LOG_ALERT, ev->log, ngx_socket_errno,
                               ngx_close_socket_n " failed");
             }
@@ -483,8 +491,11 @@ ngx_close_accepted_connection(ngx_connection_t *c)
 
     fd = c->fd;
     c->fd = (ngx_socket_t) -1;
-
+#ifdef USE_MTCP
+	if (mtcp_close(mctx,fd) == -1) {
+#else
     if (ngx_close_socket(fd) == -1) {
+#endif
         ngx_log_error(NGX_LOG_ALERT, c->log, ngx_socket_errno,
                       ngx_close_socket_n " failed");
     }

@@ -8,7 +8,7 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <nginx.h>
-
+#include <mtcp_api.h>
 
 static ngx_int_t ngx_add_inherited_sockets(ngx_cycle_t *cycle);
 static ngx_int_t ngx_get_options(int argc, char *const *argv);
@@ -194,9 +194,35 @@ static u_char      *ngx_conf_file;
 static u_char      *ngx_conf_params;
 static char        *ngx_signal;
 
+#ifdef USE_MTCP
+mctx_t mctx;
+static char *conf_file = "mtcp.conf";
+static int process_cpu = 0;
+static int core_limit;
+#endif
 
 static char **ngx_os_environ;
 
+/* TODO - signal handling logic will be revised in future revisions */
+#if 0
+static void
+signal_handler(int sig) {
+	switch (sig) {
+	case SIGTERM: srv_shutdown = 1; break;
+	case SIGINT:
+		if (graceful_shutdown) srv_shutdown = 1;
+		else graceful_shutdown = 1;
+		
+		break;
+	case SIGALRM: handle_sig_alarm = 1; break;
+	case SIGHUP:  handle_sig_hup = 1; break;
+	case SIGCHLD:  break;
+	}
+#ifdef HAVE_LIBDPDK
+        exit(EXIT_SUCCESS);
+#endif
+}
+#endif
 
 int ngx_cdecl
 main(int argc, char *const *argv)
@@ -268,7 +294,31 @@ main(int argc, char *const *argv)
     }
 
     /* TODO */ ngx_max_sockets = -1;
-
+	/** 
+	 * it is important that core limit is set 
+	 * before mtcp_init() is called. You can
+	 * not set core_limit after mtcp_init()
+	 */
+#ifdef USE_MTCP
+#if 1
+	struct mtcp_conf mcfg;
+	mtcp_getconf(&mcfg);
+	mcfg.num_cores = 1;	
+	mcfg.max_concurrency = mcfg.max_num_buffers = 500000;
+	mtcp_setconf(&mcfg);
+#endif
+	/* initialize the mtcp context */
+	if (mtcp_init(conf_file)) {
+		fprintf(stderr, "Failed to initialize mtcp\n");
+		exit(0);
+	}
+	
+	//mtcp_core_affinitize(process_cpu);
+	/* register SIGINT signal handler */
+	//mtcp_register_signal(SIGINT, signal_handler);	
+	/* create mtcp context: this will spawn an mtcp thread */
+	mctx = mtcp_create_context(process_cpu);
+#endif
     ngx_time_init();
 
 #if (NGX_PCRE)
@@ -670,6 +720,9 @@ ngx_get_options(int argc, char *const *argv)
     u_char     *p;
     ngx_int_t   i;
 
+#ifdef USE_MTCP
+	core_limit = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
     for (i = 1; i < argc; i++) {
 
         p = (u_char *) argv[i];
@@ -705,7 +758,17 @@ ngx_get_options(int argc, char *const *argv)
             case 'q':
                 ngx_quiet_mode = 1;
                 break;
-
+#ifdef USE_MTCP
+			case 'f':
+				conf_file = argv[++i];
+				break;
+			case 'n':
+				process_cpu = atoi(argv[++i]);
+				if (process_cpu > core_limit) {
+					return NGX_ERROR;
+				}
+				break;
+#endif
             case 'p':
                 if (*p) {
                     ngx_prefix = p;

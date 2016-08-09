@@ -7,6 +7,9 @@
 
 #include <ngx_config.h>
 #include <ngx_core.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 /*
@@ -29,8 +32,11 @@ ngx_nonblocking(ngx_socket_t s)
     int  nb;
 
     nb = 1;
-
+#ifdef USE_MTCP
+	return mtcp_setsock_nonblock(mctx,s);
+#else
     return ioctl(s, FIONBIO, &nb);
+#endif
 }
 
 
@@ -40,8 +46,11 @@ ngx_blocking(ngx_socket_t s)
     int  nb;
 
     nb = 0;
-
+#ifdef USE_MTCP
+	return mtcp_setsock_nonblock(mctx,s);
+#else
     return ioctl(s, FIONBIO, &nb);
+#endif
 }
 
 #endif
@@ -55,9 +64,14 @@ ngx_tcp_nopush(ngx_socket_t s)
     int  tcp_nopush;
 
     tcp_nopush = 1;
+#ifdef USE_MTCP
+	return mtcp_setsockopt(mctx,s, IPPROTO_TCP, TCP_NOPUSH,
+                      (const void *) &tcp_nopush, sizeof(int));
+#else
 
     return setsockopt(s, IPPROTO_TCP, TCP_NOPUSH,
                       (const void *) &tcp_nopush, sizeof(int));
+#endif
 }
 
 
@@ -67,9 +81,14 @@ ngx_tcp_push(ngx_socket_t s)
     int  tcp_nopush;
 
     tcp_nopush = 0;
+#ifdef USE_MTCP
+	return mtcp_setsockopt(mctx,s, IPPROTO_TCP, TCP_NOPUSH,
+                      (const void *) &tcp_nopush, sizeof(int));
+#else
 
     return setsockopt(s, IPPROTO_TCP, TCP_NOPUSH,
                       (const void *) &tcp_nopush, sizeof(int));
+#endif
 }
 
 #elif (NGX_LINUX)
@@ -81,9 +100,14 @@ ngx_tcp_nopush(ngx_socket_t s)
     int  cork;
 
     cork = 1;
+#ifdef USE_MTCP
+	return mtcp_setsockopt(mctx,s, IPPROTO_TCP, TCP_CORK,
+                      (const void *) &cork, sizeof(int));
+#else
 
     return setsockopt(s, IPPROTO_TCP, TCP_CORK,
                       (const void *) &cork, sizeof(int));
+#endif
 }
 
 
@@ -93,9 +117,14 @@ ngx_tcp_push(ngx_socket_t s)
     int  cork;
 
     cork = 0;
+#ifdef USE_MTCP
+	return mtcp_setsockopt(mctx,s, IPPROTO_TCP, TCP_CORK,
+                      (const void *) &cork, sizeof(int));
+#else
 
     return setsockopt(s, IPPROTO_TCP, TCP_CORK,
                       (const void *) &cork, sizeof(int));
+#endif
 }
 
 #else

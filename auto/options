@@ -281,6 +281,7 @@ use the \"--without-http_limit_conn_module\" option instead"
         --with-ld-opt=*)                 NGX_LD_OPT="$value"        ;;
         --with-cpu-opt=*)                CPU="$value"               ;;
         --with-debug)                    NGX_DEBUG=YES              ;;
+        --with-mtcp)                     USE_MTCP=YES               ;;
 
         --without-pcre)                  USE_PCRE=DISABLED          ;;
         --with-pcre)                     USE_PCRE=YES               ;;
@@ -464,6 +465,7 @@ cat << END
   --with-openssl-opt=OPTIONS         set additional build options for OpenSSL
 
   --with-debug                       enable debug logging
+  --with-mtcp 						 enable USE_MTCP
 
 END
 

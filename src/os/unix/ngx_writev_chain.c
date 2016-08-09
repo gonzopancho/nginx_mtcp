@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 #if (IOV_MAX > 64)
@@ -109,8 +112,12 @@ ngx_writev_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
             prev = cl->buf->pos + size;
             send += size;
         }
+#ifdef USE_MTCP
+		n = mtcp_writev(mctx,c->fd, vec.elts, vec.nelts);
+#else
+		n = writev(c->fd, vec.elts, vec.nelts);
+#endif
 
-        n = writev(c->fd, vec.elts, vec.nelts);
 
         if (n == -1) {
             err = ngx_errno;

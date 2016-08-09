@@ -8,7 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
 
+extern mctx_t mctx;
 
 #define NGX_RESOLVER_UDP_SIZE   4096
 
@@ -3044,8 +3046,19 @@ ngx_udp_connect(ngx_udp_connection_t *uc)
     ngx_event_t       *rev, *wev;
     ngx_socket_t       s;
     ngx_connection_t  *c;
+	
+#ifdef USE_MTCP
+		ngx_log_debug1(NGX_LOG_DEBUG,&uc->log,0,"F:%s  mtcp-socket:start",__FUNCTION__);
+		s = mtcp_socket(mctx, uc->sockaddr->sa_family, SOCK_DGRAM, 0);
+		if (mtcp_setsock_nonblock(mctx, s) < 0) {
+			ngx_log_error(NGX_LOG_ALERT, &uc->log, ngx_socket_errno,
+						  ngx_socket_n " failed");
+			return NGX_ERROR;
+		}
+#else
 
     s = ngx_socket(uc->sockaddr->sa_family, SOCK_DGRAM, 0);
+#endif
 
     ngx_log_debug1(NGX_LOG_DEBUG_EVENT, &uc->log, 0, "UDP socket %d", s);
 
@@ -3058,7 +3071,11 @@ ngx_udp_connect(ngx_udp_connection_t *uc)
     c = ngx_get_connection(s, &uc->log);
 
     if (c == NULL) {
+#ifdef USE_MTCP
+		if (mtcp_close(mctx,s) == -1) {
+#else
         if (ngx_close_socket(s) == -1) {
+#endif
             ngx_log_error(NGX_LOG_ALERT, &uc->log, ngx_socket_errno,
                           ngx_close_socket_n "failed");
         }
@@ -3096,9 +3113,11 @@ ngx_udp_connect(ngx_udp_connection_t *uc)
 
     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, &uc->log, 0,
                    "connect to %V, fd:%d #%uA", &uc->server, s, c->number);
-
+#ifdef USE_MTCP
+	rc = mtcp_connect(mctx,s, uc->sockaddr, uc->socklen);
+#else
     rc = connect(s, uc->sockaddr, uc->socklen);
-
+#endif
     /* TODO: aio, iocp */
 
     if (rc == -1) {

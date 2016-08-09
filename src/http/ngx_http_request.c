@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 static void ngx_http_wait_request_handler(ngx_event_t *ev);
@@ -2763,9 +2766,14 @@ ngx_http_test_reading(ngx_http_request_t *r)
          * BSDs and Linux return 0 and set a pending error in err
          * Solaris returns -1 and sets errno
          */
+#ifdef USE_MTCP
+		if (mtcp_getsockopt(mctx,c->fd, SOL_SOCKET, SO_ERROR, (void *) &err, &len)
+				== -1)
+#else
 
         if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, (void *) &err, &len)
             == -1)
+#endif
         {
             err = ngx_socket_errno;
         }
@@ -2774,9 +2782,11 @@ ngx_http_test_reading(ngx_http_request_t *r)
     }
 
 #endif
-
+#ifdef USE_MTCP
+	n = mtcp_read(mctx,c->fd, buf, 1);
+#else
     n = recv(c->fd, buf, 1, MSG_PEEK);
-
+#endif
     if (n == 0) {
         rev->eof = 1;
         c->error = 1;
@@ -3014,10 +3024,16 @@ ngx_http_set_keepalive(ngx_http_request_t *r)
         && c->tcp_nodelay == NGX_TCP_NODELAY_UNSET)
     {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "tcp_nodelay");
+#ifdef USE_MTCP
+		if (mtcp_setsockopt(mctx,c->fd, IPPROTO_TCP, TCP_NODELAY,
+                       (const void *) &tcp_nodelay, sizeof(int))
+            == -1)
+#else
 
         if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY,
                        (const void *) &tcp_nodelay, sizeof(int))
             == -1)
+#endif
         {
 #if (NGX_SOLARIS)
             /* Solaris returns EINVAL if a socket has been shut down */
@@ -3213,14 +3229,18 @@ ngx_http_set_lingering_close(ngx_http_request_t *r)
             return;
         }
     }
-
+#if 0
+#if USE_MTCP
+    if (mtcp_close(mctx,c->fd) == -1) {
+#else
     if (ngx_shutdown_socket(c->fd, NGX_WRITE_SHUTDOWN) == -1) {
+#endif
         ngx_connection_error(c, ngx_socket_errno,
                              ngx_shutdown_socket_n " failed");
         ngx_http_close_request(r, 0);
         return;
     }
-
+#endif
     if (rev->ready) {
         ngx_http_lingering_close_handler(rev);
     }
@@ -3463,9 +3483,15 @@ ngx_http_free_request(ngx_http_request_t *r, ngx_int_t rc)
         if (clcf->reset_timedout_connection) {
             linger.l_onoff = 1;
             linger.l_linger = 0;
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,r->connection->fd, SOL_SOCKET, SO_LINGER,
+                           (const void *) &linger, sizeof(struct linger))
+					== -1)
+#else
 
             if (setsockopt(r->connection->fd, SOL_SOCKET, SO_LINGER,
                            (const void *) &linger, sizeof(struct linger)) == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, log, ngx_socket_errno,
                               "setsockopt(SO_LINGER) failed");

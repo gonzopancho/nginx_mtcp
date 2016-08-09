@@ -9,6 +9,9 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include <nginx.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 static ngx_int_t ngx_http_variable_request(ngx_http_request_t *r,
@@ -1005,7 +1008,12 @@ ngx_http_variable_tcpinfo(ngx_http_request_t *r, ngx_http_variable_value_t *v,
     uint32_t         value;
 
     len = sizeof(struct tcp_info);
+#ifdef USE_MTCP
+	if (mtcp_getsockopt(mctx,r->connection->fd, IPPROTO_TCP, TCP_INFO, &ti, &len) == -1){
+#else
+	
     if (getsockopt(r->connection->fd, IPPROTO_TCP, TCP_INFO, &ti, &len) == -1) {
+#endif
         v->not_found = 1;
         return NGX_OK;
     }

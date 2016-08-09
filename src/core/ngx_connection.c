@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 ngx_os_io_t  ngx_io;
@@ -169,11 +172,16 @@ ngx_set_inherited_sockets(ngx_cycle_t *cycle)
         ls[i].backlog = NGX_LISTEN_BACKLOG;
 
         olen = sizeof(int);
-
+#ifdef USE_MTCP
+	if (mtcp_getsockopt(mctx,ls[i].fd, SOL_SOCKET, SO_RCVBUF, (void *) &ls[i].rcvbuf,
+						   &olen)
+				== -1)
+#else
         if (getsockopt(ls[i].fd, SOL_SOCKET, SO_RCVBUF, (void *) &ls[i].rcvbuf,
                        &olen)
             == -1)
-        {
+#endif
+		{
             ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                           "getsockopt(SO_RCVBUF) %V failed, ignored",
                           &ls[i].addr_text);
@@ -182,10 +190,16 @@ ngx_set_inherited_sockets(ngx_cycle_t *cycle)
         }
 
         olen = sizeof(int);
+#ifdef USE_MTCP
+		if (mtcp_getsockopt(mctx,ls[i].fd, SOL_SOCKET, SO_SNDBUF, (void *) &ls[i].sndbuf,
+                       &olen)
+					== -1)
+#else
 
         if (getsockopt(ls[i].fd, SOL_SOCKET, SO_SNDBUF, (void *) &ls[i].sndbuf,
                        &olen)
             == -1)
+#endif
         {
             ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                           "getsockopt(SO_SNDBUF) %V failed, ignored",
@@ -218,10 +232,16 @@ ngx_set_inherited_sockets(ngx_cycle_t *cycle)
 #if (NGX_HAVE_TCP_FASTOPEN)
 
         olen = sizeof(int);
+#ifdef USE_MTCP
+		if (mtcp_getsockopt(mctx,ls[i].fd, IPPROTO_TCP, TCP_FASTOPEN,
+                       (void *) &ls[i].fastopen, &olen)
+				== -1)
+#else
 
         if (getsockopt(ls[i].fd, IPPROTO_TCP, TCP_FASTOPEN,
                        (void *) &ls[i].fastopen, &olen)
             == -1)
+#endif
         {
             err = ngx_socket_errno;
 
@@ -240,9 +260,14 @@ ngx_set_inherited_sockets(ngx_cycle_t *cycle)
 
         ngx_memzero(&af, sizeof(struct accept_filter_arg));
         olen = sizeof(struct accept_filter_arg);
+#ifdef USE_MTCP
+		if (mtcp_getsockopt(mctx,ls[i].fd, SOL_SOCKET, SO_ACCEPTFILTER, &af, &olen)
+				== -1)
+#else
 
         if (getsockopt(ls[i].fd, SOL_SOCKET, SO_ACCEPTFILTER, &af, &olen)
             == -1)
+#endif
         {
             err = ngx_socket_errno;
 
@@ -273,9 +298,14 @@ ngx_set_inherited_sockets(ngx_cycle_t *cycle)
 
         timeout = 0;
         olen = sizeof(int);
+#ifdef USE_MTCP
+		if (mtcp_getsockopt(mctx,ls[i].fd, IPPROTO_TCP, TCP_DEFER_ACCEPT, &timeout, &olen)
+				== -1)
+#else
 
         if (getsockopt(ls[i].fd, IPPROTO_TCP, TCP_DEFER_ACCEPT, &timeout, &olen)
             == -1)
+#endif
         {
             err = ngx_socket_errno;
 
@@ -344,25 +374,41 @@ ngx_open_listening_sockets(ngx_cycle_t *cycle)
 
                 continue;
             }
-
-            s = ngx_socket(ls[i].sockaddr->sa_family, ls[i].type, 0);
-
-            if (s == (ngx_socket_t) -1) {
+#ifdef USE_MTCP
+			ngx_log_debug0(NGX_LOG_DEBUG_CORE,log,0,"F:open_listen  mtcp-socket:start");
+			s = mtcp_socket(mctx, ls[i].sockaddr->sa_family, ls[i].type, 0);
+			if (mtcp_setsock_nonblock(mctx, s) < 0) {
                 ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                               ngx_socket_n " %V failed", &ls[i].addr_text);
                 return NGX_ERROR;
-            }
-
+			}
+#else
+            s = ngx_socket(ls[i].sockaddr->sa_family, ls[i].type, 0);
+#endif
+			if (s == (ngx_socket_t) -1) {
+				ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
+							  ngx_socket_n " %V failed", &ls[i].addr_text);
+				return NGX_ERROR;
+			}
+#ifdef USE_MTCP
+            if (mtcp_setsockopt(mctx,s, SOL_SOCKET, SO_REUSEADDR,
+                           (const void *) &reuseaddr, sizeof(int))
+                == -1)
+#else
             if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR,
                            (const void *) &reuseaddr, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                               "setsockopt(SO_REUSEADDR) %V failed",
                               &ls[i].addr_text);
-
+#ifdef USE_MTCP
+                if (mtcp_close(mctx,s) == -1) {
+#else
                 if (ngx_close_socket(s) == -1) {
-                    ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
+#endif
+					ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                                   ngx_close_socket_n " %V failed",
                                   &ls[i].addr_text);
                 }
@@ -394,8 +440,11 @@ ngx_open_listening_sockets(ngx_cycle_t *cycle)
                     ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                                   ngx_nonblocking_n " %V failed",
                                   &ls[i].addr_text);
-
+#ifdef USE_MTCP
+					if (mtcp_close(mctx,s) == -1) {
+#else
                     if (ngx_close_socket(s) == -1) {
+#endif
                         ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                                       ngx_close_socket_n " %V failed",
                                       &ls[i].addr_text);
@@ -407,9 +456,13 @@ ngx_open_listening_sockets(ngx_cycle_t *cycle)
 
             ngx_log_debug2(NGX_LOG_DEBUG_CORE, log, 0,
                            "bind() %V #%d ", &ls[i].addr_text, s);
-
+#ifdef USE_MTCP
+			ngx_log_debug0(NGX_LOG_DEBUG_ALL,log,0,"F:open_listen  mtcp-bind:start");
+			if (0 != mtcp_bind(mctx,s, ls[i].sockaddr, ls[i].socklen)){
+#else
             if (bind(s, ls[i].sockaddr, ls[i].socklen) == -1) {
-                err = ngx_socket_errno;
+#endif
+				err = ngx_socket_errno;
 
                 if (err == NGX_EADDRINUSE && ngx_test_config) {
                     continue;
@@ -417,8 +470,11 @@ ngx_open_listening_sockets(ngx_cycle_t *cycle)
 
                 ngx_log_error(NGX_LOG_EMERG, log, err,
                               "bind() to %V failed", &ls[i].addr_text);
-
+#ifdef USE_MTCP
+				if (mtcp_close(mctx,s) == -1) {
+#else
                 if (ngx_close_socket(s) == -1) {
+#endif
                     ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                                   ngx_close_socket_n " %V failed",
                                   &ls[i].addr_text);
@@ -455,13 +511,21 @@ ngx_open_listening_sockets(ngx_cycle_t *cycle)
                 }
             }
 #endif
+#ifdef USE_MTCP
+			ngx_log_debug1(NGX_LOG_DEBUG_ALL,log,0,"F:%s  mtcp-listen:start",__FUNCTION__);
+			if (-1 == mtcp_listen(mctx, s, ls[i].backlog)) {
+#else
 
             if (listen(s, ls[i].backlog) == -1) {
+#endif
                 ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                               "listen() to %V, backlog %d failed",
                               &ls[i].addr_text, ls[i].backlog);
-
+#ifdef USE_MTCP
+				if (mtcp_close(mctx,s) == -1) {
+#else
                 if (ngx_close_socket(s) == -1) {
+#endif
                     ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                                   ngx_close_socket_n " %V failed",
                                   &ls[i].addr_text);
@@ -474,7 +538,7 @@ ngx_open_listening_sockets(ngx_cycle_t *cycle)
 
             ls[i].fd = s;
         }
-
+		ngx_log_debug1(NGX_LOG_DEBUG_ALL,log,0,"F:%s  mtcp-listen:done",__FUNCTION__);
         if (!failed) {
             break;
         }
@@ -513,9 +577,16 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
         ls[i].log = *ls[i].logp;
 
         if (ls[i].rcvbuf != -1) {
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd, SOL_SOCKET, SO_RCVBUF,
+							  (const void *) &ls[i].rcvbuf,sizeof(int))
+				== -1)
+#else
+
             if (setsockopt(ls[i].fd, SOL_SOCKET, SO_RCVBUF,
                            (const void *) &ls[i].rcvbuf, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(SO_RCVBUF, %d) %V failed, ignored",
@@ -524,9 +595,15 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
         }
 
         if (ls[i].sndbuf != -1) {
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd, SOL_SOCKET, SO_SNDBUF,
+								(const void *) &ls[i].rcvbuf,sizeof(int))
+				== -1)
+#else
             if (setsockopt(ls[i].fd, SOL_SOCKET, SO_SNDBUF,
                            (const void *) &ls[i].sndbuf, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(SO_SNDBUF, %d) %V failed, ignored",
@@ -536,10 +613,15 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
 
         if (ls[i].keepalive) {
             value = (ls[i].keepalive == 1) ? 1 : 0;
-
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd, SOL_SOCKET, SO_KEEPALIVE,
+						(const void *) &value,sizeof(int))
+				== -1)
+#else
             if (setsockopt(ls[i].fd, SOL_SOCKET, SO_KEEPALIVE,
                            (const void *) &value, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(SO_KEEPALIVE, %d) %V failed, ignored",
@@ -555,10 +637,16 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
 #if (NGX_KEEPALIVE_FACTOR)
             value *= NGX_KEEPALIVE_FACTOR;
 #endif
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd, IPPROTO_TCP, TCP_KEEPIDLE,
+							(const void *) &value,sizeof(int))
+				== -1)
+#else
 
             if (setsockopt(ls[i].fd, IPPROTO_TCP, TCP_KEEPIDLE,
                            (const void *) &value, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(TCP_KEEPIDLE, %d) %V failed, ignored",
@@ -573,9 +661,15 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
             value *= NGX_KEEPALIVE_FACTOR;
 #endif
 
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd, IPPROTO_TCP, TCP_KEEPINTVL,
+								(const void *) &value,sizeof(int))
+			== -1)
+#else
             if (setsockopt(ls[i].fd, IPPROTO_TCP, TCP_KEEPINTVL,
                            (const void *) &value, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                              "setsockopt(TCP_KEEPINTVL, %d) %V failed, ignored",
@@ -584,9 +678,15 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
         }
 
         if (ls[i].keepcnt) {
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd, IPPROTO_TCP, TCP_KEEPCNT,
+								(const void *)&ls[i].keepcnt,sizeof(int))
+				== -1)
+#else
             if (setsockopt(ls[i].fd, IPPROTO_TCP, TCP_KEEPCNT,
                            (const void *) &ls[i].keepcnt, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(TCP_KEEPCNT, %d) %V failed, ignored",
@@ -598,9 +698,15 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
 
 #if (NGX_HAVE_SETFIB)
         if (ls[i].setfib != -1) {
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd, SOL_SOCKET, SO_SETFIB,
+							(const void *)&ls[i].setfib,sizeof(int))
+				== -1)
+#else
             if (setsockopt(ls[i].fd, SOL_SOCKET, SO_SETFIB,
                            (const void *) &ls[i].setfib, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(SO_SETFIB, %d) %V failed, ignored",
@@ -611,9 +717,15 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
 
 #if (NGX_HAVE_TCP_FASTOPEN)
         if (ls[i].fastopen != -1) {
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd, IPPROTO_TCP, TCP_FASTOPEN,
+								(const void *)&ls[i].fastopen,sizeof(int))
+				== -1)
+#else
             if (setsockopt(ls[i].fd, IPPROTO_TCP, TCP_FASTOPEN,
                            (const void *) &ls[i].fastopen, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(TCP_FASTOPEN, %d) %V failed, ignored",
@@ -640,8 +752,13 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
         if (ls[i].listen) {
 
             /* change backlog via listen() */
+#ifdef USE_MTCP
+			ngx_log_debug1(NGX_LOG_DEBUG,cycle->log,0,"F:%s  mtcp-listen:start",__FUNCTION__);
+			if (-1 == mtcp_listen(mctx, ls[i].fd, ls[i].backlog)) {
+#else
 
             if (listen(ls[i].fd, ls[i].backlog) == -1) {
+#endif
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "listen() to %V, backlog %d failed, ignored",
                               &ls[i].addr_text, ls[i].backlog);
@@ -658,8 +775,13 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
 #ifdef SO_ACCEPTFILTER
 
         if (ls[i].delete_deferred) {
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd, SOL_SOCKET, SO_ACCEPTFILTER, NULL, 0)
+				== -1)
+#else
             if (setsockopt(ls[i].fd, SOL_SOCKET, SO_ACCEPTFILTER, NULL, 0)
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(SO_ACCEPTFILTER, NULL) "
@@ -683,10 +805,16 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
             ngx_memzero(&af, sizeof(struct accept_filter_arg));
             (void) ngx_cpystrn((u_char *) af.af_name,
                                (u_char *) ls[i].accept_filter, 16);
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd,SOL_SOCKET, SO_ACCEPTFILTER,
+                           &af, sizeof(struct accept_filter_arg))
+				== -1)
+#else
 
             if (setsockopt(ls[i].fd, SOL_SOCKET, SO_ACCEPTFILTER,
                            &af, sizeof(struct accept_filter_arg))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(SO_ACCEPTFILTER, \"%s\") "
@@ -716,10 +844,16 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
             } else {
                 value = 0;
             }
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,ls[i].fd,IPPROTO_TCP, TCP_DEFER_ACCEPT,
+                           &value, sizeof(int))
+				== -1)
+#else
 
             if (setsockopt(ls[i].fd, IPPROTO_TCP, TCP_DEFER_ACCEPT,
                            &value, sizeof(int))
                 == -1)
+#endif
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_socket_errno,
                               "setsockopt(TCP_DEFER_ACCEPT, %d) for %V failed, "
@@ -790,7 +924,11 @@ ngx_close_listening_sockets(ngx_cycle_t *cycle)
         ngx_log_debug2(NGX_LOG_DEBUG_CORE, cycle->log, 0,
                        "close listening %V #%d ", &ls[i].addr_text, ls[i].fd);
 
+#ifdef USE_MTCP
+		if (mtcp_close(mctx,ls[i].fd) == -1) {
+#else
         if (ngx_close_socket(ls[i].fd) == -1) {
+#endif
             ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_socket_errno,
                           ngx_close_socket_n " %V failed", &ls[i].addr_text);
         }
@@ -993,9 +1131,11 @@ ngx_close_connection(ngx_connection_t *c)
 
     fd = c->fd;
     c->fd = (ngx_socket_t) -1;
-
+#ifdef USE_MTCP
+	if (mtcp_close(mctx,fd) == -1) {
+#else
     if (ngx_close_socket(fd) == -1) {
-
+#endif
         err = ngx_socket_errno;
 
         if (err == NGX_ECONNRESET || err == NGX_ENOTCONN) {

@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 #if (NGX_HTTP_CACHE)
@@ -1092,9 +1095,14 @@ ngx_http_upstream_check_broken_connection(ngx_http_request_t *r,
          * BSDs and Linux return 0 and set a pending error in err
          * Solaris returns -1 and sets errno
          */
+#ifdef USE_MTCP
+		if (mtcp_getsockopt(mctx,c->fd, SOL_SOCKET, SO_ERROR, (void *) &err, &len)
+				== -1)
+#else
 
         if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, (void *) &err, &len)
             == -1)
+#endif
         {
             err = ngx_socket_errno;
         }
@@ -1125,9 +1133,12 @@ ngx_http_upstream_check_broken_connection(ngx_http_request_t *r,
     }
 
 #endif
+#ifdef USE_MTCP
+	n = mtcp_read(mctx,c->fd, buf, 1);
+#else
 
     n = recv(c->fd, buf, 1, MSG_PEEK);
-
+#endif
     err = ngx_socket_errno;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ev->log, err,
@@ -1973,16 +1984,23 @@ ngx_http_upstream_test_connect(ngx_connection_t *c)
          * BSDs and Linux return 0 and set a pending error in err
          * Solaris returns -1 and sets errno
          */
+int ret = 0;
+         
+#ifdef USE_MTCP
+		if ((ret = mtcp_getsockopt(mctx,c->fd, SOL_SOCKET, SO_ERROR, (void *) &err, &len))
+				== -1)
+#else
 
         if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, (void *) &err, &len)
             == -1)
+#endif
         {
             err = ngx_socket_errno;
         }
 
         if (err) {
             c->log->action = "connecting to upstream";
-            (void) ngx_connection_error(c, err, "connect() failed");
+            (void) ngx_connection_error(c, err, "connect(0) failed");
             return NGX_ERROR;
         }
     }
@@ -2219,12 +2237,16 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
     if (r->header_only) {
 
         if (u->cacheable || u->store) {
-
+#if 0
+#if USE_MTCP
+			if (mtcp_close(mctx,c->fd) == -1) {
+#else
             if (ngx_shutdown_socket(c->fd, NGX_WRITE_SHUTDOWN) == -1) {
+#endif
                 ngx_connection_error(c, ngx_socket_errno,
                                      ngx_shutdown_socket_n " failed");
             }
-
+#endif
             r->read_event_handler = ngx_http_request_empty_handler;
             r->write_event_handler = ngx_http_request_empty_handler;
             c->error = 1;
@@ -2265,9 +2287,14 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
             ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "tcp_nodelay");
 
             tcp_nodelay = 1;
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,c->fd, IPPROTO_TCP, TCP_NODELAY,
+                               (const void *) &tcp_nodelay, sizeof(int)) == -1)
+#else
 
             if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY,
                                (const void *) &tcp_nodelay, sizeof(int)) == -1)
+#endif
             {
                 ngx_connection_error(c, ngx_socket_errno,
                                      "setsockopt(TCP_NODELAY) failed");
@@ -2519,9 +2546,14 @@ ngx_http_upstream_upgrade(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
         if (c->tcp_nodelay == NGX_TCP_NODELAY_UNSET) {
             ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "tcp_nodelay");
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,c->fd, IPPROTO_TCP, TCP_NODELAY,
+                           (const void *) &tcp_nodelay, sizeof(int)) == -1)
+#else
 
             if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY,
                            (const void *) &tcp_nodelay, sizeof(int)) == -1)
+#endif
             {
                 ngx_connection_error(c, ngx_socket_errno,
                                      "setsockopt(TCP_NODELAY) failed");
@@ -2535,9 +2567,14 @@ ngx_http_upstream_upgrade(ngx_http_request_t *r, ngx_http_upstream_t *u)
         if (u->peer.connection->tcp_nodelay == NGX_TCP_NODELAY_UNSET) {
             ngx_log_debug0(NGX_LOG_DEBUG_HTTP, u->peer.connection->log, 0,
                            "tcp_nodelay");
+#ifdef USE_MTCP
+			if (mtcp_setsockopt(mctx,u->peer.connection->fd, IPPROTO_TCP, TCP_NODELAY,
+                           (const void *) &tcp_nodelay, sizeof(int)) == -1)
+#else
 
             if (setsockopt(u->peer.connection->fd, IPPROTO_TCP, TCP_NODELAY,
                            (const void *) &tcp_nodelay, sizeof(int)) == -1)
+#endif
             {
                 ngx_connection_error(u->peer.connection, ngx_socket_errno,
                                      "setsockopt(TCP_NODELAY) failed");

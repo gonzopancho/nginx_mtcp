@@ -9,7 +9,9 @@
 #include <ngx_core.h>
 #include <ngx_event.h>
 #include <ngx_event_connect.h>
+#include <mtcp_api.h>
 
+extern mctx_t mctx;
 
 ngx_int_t
 ngx_event_connect_peer(ngx_peer_connection_t *pc)
@@ -26,9 +28,17 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     if (rc != NGX_OK) {
         return rc;
     }
+#ifdef USE_MTCP
+	s = mtcp_socket(mctx, pc->sockaddr->sa_family,SOCK_STREAM, 0);
+	if (mtcp_setsock_nonblock(mctx, s) < 0) {
+        ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
+                      ngx_socket_n " failed");
+		return NGX_ERROR;
+	}
+#else
 
     s = ngx_socket(pc->sockaddr->sa_family, SOCK_STREAM, 0);
-
+#endif
     ngx_log_debug1(NGX_LOG_DEBUG_EVENT, pc->log, 0, "socket %d", s);
 
     if (s == (ngx_socket_t) -1) {
@@ -41,7 +51,12 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     c = ngx_get_connection(s, pc->log);
 
     if (c == NULL) {
+		
+#ifdef USE_MTCP
+		if (mtcp_close(mctx,s) == -1) {
+#else
         if (ngx_close_socket(s) == -1) {
+#endif
             ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
                           ngx_close_socket_n "failed");
         }
@@ -50,8 +65,14 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     }
 
     if (pc->rcvbuf) {
+#ifdef USE_MTCP
+		if (mtcp_setsockopt(mctx,s, SOL_SOCKET, SO_RCVBUF,
+                       (const void *) &pc->rcvbuf, sizeof(int)) == -1)
+#else
+		
         if (setsockopt(s, SOL_SOCKET, SO_RCVBUF,
                        (const void *) &pc->rcvbuf, sizeof(int)) == -1)
+#endif
         {
             ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
                           "setsockopt(SO_RCVBUF) failed");
@@ -67,7 +88,11 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     }
 
     if (pc->local) {
+#ifdef USE_MTCP
+		if (0 != mtcp_bind(mctx,s,pc->local->sockaddr, pc->local->socklen)){
+#else
         if (bind(s, pc->local->sockaddr, pc->local->socklen) == -1) {
+#endif
             ngx_log_error(NGX_LOG_CRIT, pc->log, ngx_socket_errno,
                           "bind(%V) failed", &pc->local->name);
 
@@ -123,9 +148,11 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
 
     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, pc->log, 0,
                    "connect to %V, fd:%d #%uA", pc->name, s, c->number);
-
+#ifdef USE_MTCP
+	rc = mtcp_connect(mctx,s, pc->sockaddr, pc->socklen);
+#else
     rc = connect(s, pc->sockaddr, pc->socklen);
-
+#endif
     if (rc == -1) {
         err = ngx_socket_errno;
 

@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 static ngx_int_t ngx_select_init(ngx_cycle_t *cycle, ngx_msec_t timer);
@@ -368,8 +371,12 @@ ngx_select_repair_fd_sets(ngx_cycle_t *cycle)
         }
 
         len = sizeof(int);
+#ifdef USE_MTCP
+		if (mtcp_getsockopt(mctx,s, SOL_SOCKET, SO_TYPE, &n, &len) == -1){
+#else
 
         if (getsockopt(s, SOL_SOCKET, SO_TYPE, &n, &len) == -1) {
+#endif
             err = ngx_socket_errno;
 
             ngx_log_error(NGX_LOG_ALERT, cycle->log, err,
@@ -386,8 +393,12 @@ ngx_select_repair_fd_sets(ngx_cycle_t *cycle)
         }
 
         len = sizeof(int);
+#ifdef USE_MTCP
+		if (mtcp_getsockopt(mctx,s, SOL_SOCKET, SO_TYPE, &n, &len) == -1){
+#else
 
         if (getsockopt(s, SOL_SOCKET, SO_TYPE, &n, &len) == -1) {
+#endif
             err = ngx_socket_errno;
 
             ngx_log_error(NGX_LOG_ALERT, cycle->log, err,

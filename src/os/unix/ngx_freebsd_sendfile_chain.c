@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 /*
@@ -333,8 +336,12 @@ ngx_freebsd_sendfile_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
                            rc, file->file_pos, sent, file_size + header_size);
 
         } else {
-            rc = writev(c->fd, header.elts, header.nelts);
+#ifdef USE_MTCP
+			rc = mtcp_writev(mctx,c->fd, header.elts, header.nelts);
+#else
 
+			rc = writev(c->fd, header.elts, header.nelts);
+#endif
             ngx_log_debug2(NGX_LOG_DEBUG_EVENT, c->log, 0,
                            "writev: %d of %uz", rc, header_size);
 

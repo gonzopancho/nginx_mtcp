@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 /*
@@ -159,9 +162,14 @@ ngx_linux_sendfile_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
             if (c->tcp_nodelay == NGX_TCP_NODELAY_SET) {
 
                 tcp_nodelay = 0;
+#ifdef USE_MTCP
+				if (mtcp_setsockopt(mctx,c->fd, IPPROTO_TCP, TCP_NODELAY,
+                               (const void *) &tcp_nodelay, sizeof(int)) == -1)
+#else
 
                 if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY,
                                (const void *) &tcp_nodelay, sizeof(int)) == -1)
+#endif
                 {
                     err = ngx_socket_errno;
 
@@ -291,8 +299,12 @@ ngx_linux_sendfile_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
                            rc, file->file_pos, sent, file_size);
 
         } else {
-            rc = writev(c->fd, header.elts, header.nelts);
+#ifdef USE_MTCP
+			rc = mtcp_writev(mctx,c->fd, header.elts, header.nelts);
+#else
 
+			rc = writev(c->fd, header.elts, header.nelts);
+#endif
             if (rc == -1) {
                 err = ngx_errno;
 

@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 ssize_t
@@ -31,7 +34,11 @@ ngx_unix_send(ngx_connection_t *c, u_char *buf, size_t size)
 #endif
 
     for ( ;; ) {
+#ifdef USE_MTCP
+		n = mtcp_write(mctx,c->fd, buf, size);
+#else
         n = send(c->fd, buf, size, 0);
+#endif
 
         ngx_log_debug3(NGX_LOG_DEBUG_EVENT, c->log, 0,
                        "send: fd:%d %d of %d", c->fd, n, size);

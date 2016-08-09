@@ -7,6 +7,9 @@
 
 #include <ngx_config.h>
 #include <ngx_core.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 #if (NGX_HAVE_FILE_AIO)
@@ -225,9 +228,12 @@ ngx_write_chain_to_file(ngx_file_t *file, ngx_chain_t *cl, off_t offset,
 
             file->sys_offset = offset;
         }
+#ifdef USE_MTCP
+		n = mtcp_writev(mctx,file->fd, vec.elts, vec.nelts);
+#else
 
         n = writev(file->fd, vec.elts, vec.nelts);
-
+#endif
         if (n == -1) {
             ngx_log_error(NGX_LOG_CRIT, file->log, ngx_errno,
                           "writev() \"%s\" failed", file->name.data);

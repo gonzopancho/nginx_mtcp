@@ -9,6 +9,9 @@
 #include <ngx_core.h>
 #include <ngx_event.h>
 #include <ngx_channel.h>
+#include <mtcp_epoll.h>
+
+extern mctx_t mctx;
 
 
 static void ngx_start_worker_processes(ngx_cycle_t *cycle, ngx_int_t n,
@@ -212,7 +215,11 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
 
             ls = cycle->listening.elts;
             for (n = 0; n < cycle->listening.nelts; n++) {
+#ifdef USE_MTCP
+				if (mtcp_close(mctx,ls[n].fd) == -1) {
+#else
                 if (ngx_close_socket(ls[n].fd) == -1) {
+#endif
                     ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_socket_errno,
                                   ngx_close_socket_n " %V failed",
                                   &ls[n].addr_text);
@@ -310,7 +317,7 @@ ngx_single_process_cycle(ngx_cycle_t *cycle)
     }
 
     for ( ;; ) {
-        ngx_log_debug0(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "worker cycle");
+        ngx_log_debug0(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "single cycle");
 
         ngx_process_events_and_timers(cycle);
 

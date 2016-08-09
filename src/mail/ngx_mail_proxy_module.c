@@ -10,6 +10,9 @@
 #include <ngx_event.h>
 #include <ngx_event_connect.h>
 #include <ngx_mail.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 typedef struct {
@@ -123,10 +126,15 @@ ngx_mail_proxy_init(ngx_mail_session_t *s, ngx_addr_t *peer)
 
     if (cscf->so_keepalive) {
         keepalive = 1;
+#ifdef USE_MTCP
+		if (mtcp_setsockopt(mctx,s->connection->fd, SOL_SOCKET, SO_KEEPALIVE,
+                       (const void *) &keepalive, sizeof(int)) == -1)
+#else
 
         if (setsockopt(s->connection->fd, SOL_SOCKET, SO_KEEPALIVE,
                        (const void *) &keepalive, sizeof(int))
                 == -1)
+#endif
         {
             ngx_log_error(NGX_LOG_ALERT, s->connection->log, ngx_socket_errno,
                           "setsockopt(SO_KEEPALIVE) failed");

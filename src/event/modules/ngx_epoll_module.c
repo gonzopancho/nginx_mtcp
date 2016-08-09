@@ -8,6 +8,10 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+#include <mtcp_epoll.h>
+
+extern mctx_t mctx;
 
 
 #if (NGX_TEST_BUILD_EPOLL)
@@ -117,7 +121,12 @@ static void *ngx_epoll_create_conf(ngx_cycle_t *cycle);
 static char *ngx_epoll_init_conf(ngx_cycle_t *cycle, void *conf);
 
 static int                  ep = -1;
-static struct epoll_event  *event_list;
+
+#ifdef USE_MTCP
+	static struct mtcp_epoll_event *event_list;
+#else
+	static struct epoll_event  *event_list;
+#endif
 static ngx_uint_t           nevents;
 
 #if (NGX_HAVE_FILE_AIO)
@@ -225,8 +234,11 @@ static void
 ngx_epoll_aio_init(ngx_cycle_t *cycle, ngx_epoll_conf_t *epcf)
 {
     int                 n;
+#ifdef USE_MTCP
+	struct mtcp_epoll_event ee;
+#else
     struct epoll_event  ee;
-
+#endif
     ngx_eventfd = syscall(SYS_eventfd, 0);
 
     if (ngx_eventfd == -1) {
@@ -263,8 +275,11 @@ ngx_epoll_aio_init(ngx_cycle_t *cycle, ngx_epoll_conf_t *epcf)
 
     ee.events = EPOLLIN|EPOLLET;
     ee.data.ptr = &ngx_eventfd_conn;
-
+#ifdef USE_MTCP
+	if(mtcp_epoll_ctl(mctx,ep, EPOLL_CTL_ADD, ngx_eventfd, &ee) !=0){
+#else
     if (epoll_ctl(ep, EPOLL_CTL_ADD, ngx_eventfd, &ee) != -1) {
+#endif
         return;
     }
 
@@ -299,7 +314,13 @@ ngx_epoll_init(ngx_cycle_t *cycle, ngx_msec_t timer)
     epcf = ngx_event_get_conf(cycle->conf_ctx, ngx_epoll_module);
 
     if (ep == -1) {
+#ifdef USE_MTCP
+		ep = mtcp_epoll_create(mctx,cycle->connection_n / 2);
+		ngx_log_debug2(NGX_LOG_DEBUG_ALL,cycle->log,0,"mtcp_epoll create ep:%d cycle->connection_n:%d\n",ep,cycle->connection_n);
+
+#else
         ep = epoll_create(cycle->connection_n / 2);
+#endif
 
         if (ep == -1) {
             ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno,
@@ -318,10 +339,14 @@ ngx_epoll_init(ngx_cycle_t *cycle, ngx_msec_t timer)
         if (event_list) {
             ngx_free(event_list);
         }
-
+#ifdef USE_MTCP
+		event_list = ngx_alloc(sizeof(struct mtcp_epoll_event) * epcf->events,
+								   cycle->log);
+#else
         event_list = ngx_alloc(sizeof(struct epoll_event) * epcf->events,
                                cycle->log);
-        if (event_list == NULL) {
+#endif
+		if (event_list == NULL) {
             return NGX_ERROR;
         }
     }
@@ -347,7 +372,11 @@ ngx_epoll_init(ngx_cycle_t *cycle, ngx_msec_t timer)
 static void
 ngx_epoll_done(ngx_cycle_t *cycle)
 {
+#ifdef USE_MTCP
+	if(mtcp_close(mctx, ep)) {
+#else
     if (close(ep) == -1) {
+#endif
         ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
                       "epoll close() failed");
     }
@@ -389,8 +418,12 @@ ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
     uint32_t             events, prev;
     ngx_event_t         *e;
     ngx_connection_t    *c;
-    struct epoll_event   ee;
+#ifdef USE_MTCP
+	struct mtcp_epoll_event	 ee;
+#else
 
+    struct epoll_event   ee;
+#endif
     c = ev->data;
 
     events = (uint32_t) event;
@@ -420,12 +453,14 @@ ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
 
     ee.events = events | (uint32_t) flags;
     ee.data.ptr = (void *) ((uintptr_t) c | ev->instance);
-
     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, ev->log, 0,
                    "epoll add event: fd:%d op:%d ev:%08XD",
                    c->fd, op, ee.events);
-
+#ifdef USE_MTCP
+	if(mtcp_epoll_ctl(mctx,ep, op, c->fd, (struct mtcp_epoll_event *)&ee) !=0){
+#else
     if (epoll_ctl(ep, op, c->fd, &ee) == -1) {
+#endif
         ngx_log_error(NGX_LOG_ALERT, ev->log, ngx_errno,
                       "epoll_ctl(%d, %d) failed", op, c->fd);
         return NGX_ERROR;
@@ -447,8 +482,12 @@ ngx_epoll_del_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
     uint32_t             prev;
     ngx_event_t         *e;
     ngx_connection_t    *c;
-    struct epoll_event   ee;
+#ifdef USE_MTCP
+	struct mtcp_epoll_event  ee;
+#else
 
+    struct epoll_event   ee;
+#endif
     /*
      * when the file descriptor is closed, the epoll automatically deletes
      * it from its queue, so we do not need to delete explicitly the event
@@ -485,8 +524,11 @@ ngx_epoll_del_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, ev->log, 0,
                    "epoll del event: fd:%d op:%d ev:%08XD",
                    c->fd, op, ee.events);
-
+#ifdef USE_MTCP
+	if(mtcp_epoll_ctl(mctx,ep, op, c->fd, &ee) !=0){
+#else
     if (epoll_ctl(ep, op, c->fd, &ee) == -1) {
+#endif
         ngx_log_error(NGX_LOG_ALERT, ev->log, ngx_errno,
                       "epoll_ctl(%d, %d) failed", op, c->fd);
         return NGX_ERROR;
@@ -501,15 +543,21 @@ ngx_epoll_del_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
 static ngx_int_t
 ngx_epoll_add_connection(ngx_connection_t *c)
 {
+#ifdef USE_MTCP
+	struct mtcp_epoll_event  ee;
+#else
     struct epoll_event  ee;
-
+#endif
     ee.events = EPOLLIN|EPOLLOUT|EPOLLET|EPOLLRDHUP;
     ee.data.ptr = (void *) ((uintptr_t) c | c->read->instance);
 
     ngx_log_debug2(NGX_LOG_DEBUG_EVENT, c->log, 0,
                    "epoll add connection: fd:%d ev:%08XD", c->fd, ee.events);
-
+#ifdef USE_MTCP
+	if(mtcp_epoll_ctl(mctx,ep, EPOLL_CTL_ADD, c->fd, &ee) !=0){
+#else
     if (epoll_ctl(ep, EPOLL_CTL_ADD, c->fd, &ee) == -1) {
+#endif
         ngx_log_error(NGX_LOG_ALERT, c->log, ngx_errno,
                       "epoll_ctl(EPOLL_CTL_ADD, %d) failed", c->fd);
         return NGX_ERROR;
@@ -526,8 +574,11 @@ static ngx_int_t
 ngx_epoll_del_connection(ngx_connection_t *c, ngx_uint_t flags)
 {
     int                 op;
+#ifdef USE_MTCP
+	struct mtcp_epoll_event  ee;
+#else
     struct epoll_event  ee;
-
+#endif
     /*
      * when the file descriptor is closed the epoll automatically deletes
      * it from its queue so we do not need to delete explicitly the event
@@ -546,8 +597,11 @@ ngx_epoll_del_connection(ngx_connection_t *c, ngx_uint_t flags)
     op = EPOLL_CTL_DEL;
     ee.events = 0;
     ee.data.ptr = NULL;
-
+#ifdef USE_MTCP
+	if(mtcp_epoll_ctl(mctx,ep, op, c->fd, &ee) !=0){
+#else
     if (epoll_ctl(ep, op, c->fd, &ee) == -1) {
+#endif
         ngx_log_error(NGX_LOG_ALERT, c->log, ngx_errno,
                       "epoll_ctl(%d, %d) failed", op, c->fd);
         return NGX_ERROR;
@@ -575,9 +629,11 @@ ngx_epoll_process_events(ngx_cycle_t *cycle, ngx_msec_t timer, ngx_uint_t flags)
 
     ngx_log_debug1(NGX_LOG_DEBUG_EVENT, cycle->log, 0,
                    "epoll timer: %M", timer);
-
+#ifdef USE_MTCP
+	events = mtcp_epoll_wait(mctx, ep, event_list, (int) nevents,timer);
+#else
     events = epoll_wait(ep, event_list, (int) nevents, timer);
-
+#endif
     err = (events == -1) ? ngx_errno : 0;
 
     if (flags & NGX_UPDATE_TIME || ngx_event_timer_alarm) {

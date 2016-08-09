@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_epoll.h>
+
+extern mctx_t mctx;
 
 
 static void ngx_destroy_cycle_pools(ngx_conf_t *conf);
@@ -663,8 +666,11 @@ old_shm_zone_done:
         if (ls[i].remain || ls[i].fd == (ngx_socket_t) -1) {
             continue;
         }
-
+#ifdef USE_MTCP
+		if (mtcp_close(mctx,ls[i].fd) == -1) {
+#else
         if (ngx_close_socket(ls[i].fd) == -1) {
+#endif
             ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                           ngx_close_socket_n " listening socket on %V failed",
                           &ls[i].addr_text);
@@ -827,8 +833,11 @@ failed:
         if (ls[i].fd == (ngx_socket_t) -1 || !ls[i].open) {
             continue;
         }
-
+#ifdef USE_MTCP
+		if (mtcp_close(mctx,ls[i].fd) == -1) {
+#else
         if (ngx_close_socket(ls[i].fd) == -1) {
+#endif
             ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
                           ngx_close_socket_n " %V failed",
                           &ls[i].addr_text);

@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 #define DEFAULT_CONNECTIONS  512
@@ -881,10 +884,16 @@ ngx_send_lowat(ngx_connection_t *c, size_t lowat)
     }
 
     sndlowat = (int) lowat;
+#ifdef USE_MTCP
+		if (mtcp_setsockopt(mctx,c->fd, SOL_SOCKET, SO_SNDLOWAT,
+                   (const void *) &sndlowat, sizeof(int))
+		== -1)
+#else
 
     if (setsockopt(c->fd, SOL_SOCKET, SO_SNDLOWAT,
                    (const void *) &sndlowat, sizeof(int))
         == -1)
+#endif
     {
         ngx_connection_error(c, ngx_socket_errno,
                              "setsockopt(SO_SNDLOWAT) failed");
@@ -1229,7 +1238,11 @@ ngx_event_core_init_conf(ngx_cycle_t *cycle, void *conf)
 
 #if (NGX_HAVE_EPOLL) && !(NGX_TEST_BUILD_EPOLL)
 
+#ifdef USE_MTCP
+	fd = mtcp_epoll_create(mctx,100);
+#else
     fd = epoll_create(100);
+#endif
 
     if (fd != -1) {
         (void) close(fd);

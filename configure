@@ -23,6 +23,11 @@ if [ $NGX_DEBUG = YES ]; then
     have=NGX_DEBUG . auto/have
 fi
 
+if [ $USE_MTCP = YES ]; then
+    have=USE_MTCP . auto/have
+fi
+
+
 
 if test -z "$NGX_PLATFORM"; then
     echo "checking for OS"

@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 typedef struct {
@@ -382,9 +385,11 @@ ngx_http_upstream_keepalive_close_handler(ngx_event_t *ev)
     if (c->close) {
         goto close;
     }
-
+#ifdef USE_MTCP
+	n = mtcp_read(mctx,c->fd, buf, 1);
+#else
     n = recv(c->fd, buf, 1, MSG_PEEK);
-
+#endif
     if (n == -1 && ngx_socket_errno == NGX_EAGAIN) {
         /* stale event */
 

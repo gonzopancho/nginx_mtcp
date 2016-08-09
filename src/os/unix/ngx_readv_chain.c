@@ -8,6 +8,9 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <mtcp_api.h>
+
+extern mctx_t mctx;
 
 
 #define NGX_IOVS  16
@@ -95,8 +98,11 @@ ngx_readv_chain(ngx_connection_t *c, ngx_chain_t *chain)
     rev = c->read;
 
     do {
+#ifdef USE_MTCP
+		n = mtcp_readv(mctx,c->fd, (struct iovec *) vec.elts, vec.nelts);
+#else
         n = readv(c->fd, (struct iovec *) vec.elts, vec.nelts);
-
+#endif
         if (n >= 0) {
             if (ngx_event_flags & NGX_USE_KQUEUE_EVENT) {
                 rev->available -= n;
@@ -224,7 +230,11 @@ ngx_readv_chain(ngx_connection_t *c, ngx_chain_t *chain)
     rev = c->read;
 
     do {
+#ifdef USE_MTCP
+		n = mtcp_readv(mctx,c->fd, (struct iovec *) vec.elts, vec.nelts);
+#else
         n = readv(c->fd, (struct iovec *) vec.elts, vec.nelts);
+#endif
 
         if (n == 0) {
             rev->ready = 0;
