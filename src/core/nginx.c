@@ -223,6 +223,22 @@ signal_handler(int sig) {
 #endif
 }
 #endif
+int getsockname (int __fd, __SOCKADDR_ARG __addr,socklen_t *__restrict __len)
+{
+	return -1;
+}
+
+int socketpair (int __domain, int __type, int __protocol,
+	int __fds[2])
+{
+	return -1;
+}
+
+int shutdown (int __fd, int __how)
+{
+	return -1;
+}
+
 
 int ngx_cdecl
 main(int argc, char *const *argv)

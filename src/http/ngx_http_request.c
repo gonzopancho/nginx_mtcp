@@ -2783,7 +2783,7 @@ ngx_http_test_reading(ngx_http_request_t *r)
 
 #endif
 #ifdef USE_MTCP
-	n = mtcp_read(mctx,c->fd, buf, 1);
+	n = mtcp_read(mctx,c->fd, buf, 1,MSG_PEEK);
 #else
     n = recv(c->fd, buf, 1, MSG_PEEK);
 #endif

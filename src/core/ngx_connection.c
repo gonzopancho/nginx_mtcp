@@ -1266,7 +1266,7 @@ ngx_connection_local_sockaddr(ngx_connection_t *c, ngx_str_t *s,
         len = NGX_SOCKADDRLEN;
 
         if (getsockname(c->fd, (struct sockaddr *) &sa, &len) == -1) {
-            ngx_connection_error(c, ngx_socket_errno, "getsockname() failed");
+            //ngx_connection_error(c, ngx_socket_errno, "getsockname() failed");
             return NGX_ERROR;
         }
 

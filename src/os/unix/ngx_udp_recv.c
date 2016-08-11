@@ -26,7 +26,7 @@ ngx_udp_unix_recv(ngx_connection_t *c, u_char *buf, size_t size)
 
     do {
 #ifdef USE_MTCP
-		n = mtcp_read(mctx,c->fd, buf, size);
+		n = mtcp_read(mctx,c->fd, buf, size,0);
 #else
 		n = recv(c->fd, buf, size, 0);
 #endif
@@ -88,7 +88,7 @@ ngx_udp_unix_recv(ngx_connection_t *c, u_char *buf, size_t size)
 
     do {
 #ifdef USE_MTCP
-		n = mtcp_read(mctx,c->fd, buf, size);
+		n = mtcp_read(mctx,c->fd, buf, size,0);
 #else
 		n = recv(c->fd, buf, size, 0);
 #endif
