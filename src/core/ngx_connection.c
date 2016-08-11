@@ -375,7 +375,6 @@ ngx_open_listening_sockets(ngx_cycle_t *cycle)
                 continue;
             }
 #ifdef USE_MTCP
-			ngx_log_debug0(NGX_LOG_DEBUG_CORE,log,0,"F:open_listen  mtcp-socket:start");
 			s = mtcp_socket(mctx, ls[i].sockaddr->sa_family, ls[i].type, 0);
 			if (mtcp_setsock_nonblock(mctx, s) < 0) {
                 ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
