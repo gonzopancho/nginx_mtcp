@@ -32,11 +32,6 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     }
 #ifdef USE_MTCP
 	s = mtcp_socket(mctx, pc->sockaddr->sa_family,SOCK_STREAM, 0);
-	if (mtcp_setsock_nonblock(mctx, s) < 0) {
-        ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
-                      ngx_socket_n " failed");
-		return NGX_ERROR;
-	}
 #else
 
     s = ngx_socket(pc->sockaddr->sa_family, SOCK_STREAM, 0);

@@ -379,11 +379,6 @@ ngx_open_listening_sockets(ngx_cycle_t *cycle)
             }
 #ifdef USE_MTCP
 			s = mtcp_socket(mctx, ls[i].sockaddr->sa_family, ls[i].type, 0);
-			if (mtcp_setsock_nonblock(mctx, s) < 0) {
-                ngx_log_error(NGX_LOG_EMERG, log, ngx_socket_errno,
-                              ngx_socket_n " %V failed", &ls[i].addr_text);
-                return NGX_ERROR;
-			}
 #else
             s = ngx_socket(ls[i].sockaddr->sa_family, ls[i].type, 0);
 #endif

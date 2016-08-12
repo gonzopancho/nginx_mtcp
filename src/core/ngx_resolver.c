@@ -3050,13 +3050,7 @@ ngx_udp_connect(ngx_udp_connection_t *uc)
     ngx_connection_t  *c;
 	
 #ifdef USE_MTCP
-		ngx_log_debug1(NGX_LOG_DEBUG,&uc->log,0,"F:%s  mtcp-socket:start",__FUNCTION__);
-		s = mtcp_socket(mctx, uc->sockaddr->sa_family, SOCK_DGRAM, 0);
-		if (mtcp_setsock_nonblock(mctx, s) < 0) {
-			ngx_log_error(NGX_LOG_ALERT, &uc->log, ngx_socket_errno,
-						  ngx_socket_n " failed");
-			return NGX_ERROR;
-		}
+	s = mtcp_socket(mctx, uc->sockaddr->sa_family, SOCK_DGRAM, 0);
 #else
 
     s = ngx_socket(uc->sockaddr->sa_family, SOCK_DGRAM, 0);

@@ -49,7 +49,7 @@ ngx_blocking(ngx_socket_t s)
 
     nb = 0;
 #ifdef USE_MTCP
-	return mtcp_setsock_nonblock(mctx,s);
+	return mtcp_setsock_block(mctx,s);
 #else
     return ioctl(s, FIONBIO, &nb);
 #endif
