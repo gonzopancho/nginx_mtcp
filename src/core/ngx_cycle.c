@@ -8,9 +8,11 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#ifdef USE_MTCP
 #include <mtcp_epoll.h>
 
 extern mctx_t mctx;
+#endif
 
 
 static void ngx_destroy_cycle_pools(ngx_conf_t *conf);

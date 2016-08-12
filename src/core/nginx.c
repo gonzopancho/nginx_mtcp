@@ -8,7 +8,10 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <nginx.h>
+
+#ifdef USE_MTCP
 #include <mtcp_api.h>
+#endif
 
 static ngx_int_t ngx_add_inherited_sockets(ngx_cycle_t *cycle);
 static ngx_int_t ngx_get_options(int argc, char *const *argv);

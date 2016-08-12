@@ -8,9 +8,11 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+#ifdef USE_MTCP
 #include <mtcp_api.h>
 
 extern mctx_t mctx;
+#endif
 
 
 #if (NGX_HTTP_CACHE)
@@ -1984,10 +1986,9 @@ ngx_http_upstream_test_connect(ngx_connection_t *c)
          * BSDs and Linux return 0 and set a pending error in err
          * Solaris returns -1 and sets errno
          */
-int ret = 0;
          
 #ifdef USE_MTCP
-		if ((ret = mtcp_getsockopt(mctx,c->fd, SOL_SOCKET, SO_ERROR, (void *) &err, &len))
+		if (mtcp_getsockopt(mctx,c->fd, SOL_SOCKET, SO_ERROR, (void *) &err, &len)
 				== -1)
 #else
 

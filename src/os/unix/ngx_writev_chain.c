@@ -8,9 +8,11 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#ifdef USE_MTCP
 #include <mtcp_api.h>
 
 extern mctx_t mctx;
+#endif
 
 
 #if (IOV_MAX > 64)

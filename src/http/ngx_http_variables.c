@@ -9,9 +9,11 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include <nginx.h>
+#ifdef USE_MTCP
 #include <mtcp_api.h>
 
 extern mctx_t mctx;
+#endif
 
 
 static ngx_int_t ngx_http_variable_request(ngx_http_request_t *r,

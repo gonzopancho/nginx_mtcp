@@ -8,9 +8,11 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#ifdef USE_MTCP
 #include <mtcp_api.h>
 
 extern mctx_t mctx;
+#endif
 
 
 static ngx_int_t ngx_enable_accept_events(ngx_cycle_t *cycle);

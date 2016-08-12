@@ -8,10 +8,13 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+
+#ifdef USE_MTCP
 #include <mtcp_api.h>
 #include <mtcp_epoll.h>
 
 extern mctx_t mctx;
+#endif
 
 
 #if (NGX_TEST_BUILD_EPOLL)

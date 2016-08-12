@@ -9,9 +9,11 @@
 #include <ngx_core.h>
 #include <ngx_event.h>
 #include <ngx_channel.h>
+#ifdef USE_MTCP
 #include <mtcp_epoll.h>
 
 extern mctx_t mctx;
+#endif
 
 
 static void ngx_start_worker_processes(ngx_cycle_t *cycle, ngx_int_t n,

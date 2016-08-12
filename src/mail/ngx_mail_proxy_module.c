@@ -10,9 +10,11 @@
 #include <ngx_event.h>
 #include <ngx_event_connect.h>
 #include <ngx_mail.h>
+#ifdef USE_MTCP
 #include <mtcp_api.h>
 
 extern mctx_t mctx;
+#endif
 
 
 typedef struct {

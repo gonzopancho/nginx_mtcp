@@ -8,9 +8,12 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
-#include <mtcp_api.h>
 
+#ifdef USE_MTCP
+#include <mtcp_api.h>
 extern mctx_t mctx;
+#endif
+
 
 
 ngx_os_io_t  ngx_io;
